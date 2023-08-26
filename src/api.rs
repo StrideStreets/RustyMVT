@@ -1,85 +1,10 @@
+use crate::db::structs::Schema;
+
+use super::db::structs::{Table, TableRegistry};
 use super::AppState;
 use anyhow::{anyhow, bail, Context, Result};
 use axum::extract::{Path, State};
 use sqlx::{query, FromRow, Pool, Postgres, Row};
-use std::{collections::HashMap, fmt::Debug};
-
-#[derive(Debug)]
-pub struct TableRegistry {
-    name: String,
-    schemas: HashMap<String, Schema>,
-}
-
-impl TableRegistry {
-    fn new(n: String) -> TableRegistry {
-        return TableRegistry {
-            name: n,
-            schemas: HashMap::new(),
-        };
-    }
-}
-
-#[derive(Debug)]
-struct Schema {
-    name: String,
-    tables: HashMap<String, Table>,
-}
-
-impl Schema {
-    fn new(n: String) -> Schema {
-        return Schema {
-            name: n,
-            tables: HashMap::new(),
-        };
-    }
-}
-
-//"Once DB is connected, work on loading tables in this format, and rewrite Schema"
-#[derive(sqlx::FromRow, Debug)]
-struct Table {
-    #[sqlx(rename = "table")]
-    name: String,
-    primary_key_columns: Vec<String>,
-    #[sqlx(default)]
-    geom_column: Option<String>,
-    #[sqlx(default)]
-    geom_type: Option<String>,
-    #[sqlx(default)]
-    srid: Option<i32>,
-    #[sqlx(default)]
-    attr_columns: Option<Vec<String>>,
-}
-
-impl Table {
-    fn new(
-        name: String,
-        primary_key_columns: Vec<String>,
-        geom_column: String,
-        geom_type: String,
-        srid: i32,
-        attrs: Option<Vec<String>>,
-    ) -> Table {
-        if let Some(attr_columns) = attrs {
-            return Table {
-                name,
-                primary_key_columns,
-                geom_column: Some(geom_column),
-                geom_type: Some(geom_type),
-                srid: Some(srid),
-                attr_columns: Some(attr_columns),
-            };
-        } else {
-            return Table {
-                name,
-                primary_key_columns,
-                geom_column: Some(geom_column),
-                geom_type: Some(geom_type),
-                srid: Some(srid),
-                attr_columns: Some(Vec::new()),
-            };
-        }
-    }
-}
 
 struct Tile {
     z: u32,
@@ -90,109 +15,25 @@ struct Tile {
 const WORLD_MERC_MAX: f64 = 20037508.3427892;
 const WORLD_MERC_MIN: f64 = WORLD_MERC_MAX * -1_f64;
 const INCOMING_SRID: usize = 3857;
+const EXTENT: f32 = 4096.0;
+const BUFFER: f32 = 64.0;
 
-pub async fn load_table_registry(p: &Pool<Postgres>, db: String) -> Result<TableRegistry> {
-    //Will autopopulate a table registry for a given database, in the mold of the placeholder defined below
-
-    let mut schema_and_table_info = query("select
-    tabs.*,
-    gc.f_geometry_column as geom_column, gc.srid as srid, gc.type as geom_type, gc.coord_dimension as geom_coord_dimension
-    from
-    (
-        select
-        pks.schema_name as schema,
-        pks.table_name as table,
-        array_agg(pks.pk)::TEXT[] as primary_key_columns
-        from
-        (
-            select
-            tab.table_schema as schema_name,
-            tab.table_name as table_name,
-            tco.column_name as pk
-            from
-            information_schema.table_constraints tab
-            left join information_schema.key_column_usage tco on
-            tab.table_schema = tco.table_schema
-            and tab.table_name = tco.table_name
-            and tab.constraint_name = tco.constraint_name
-            where
-            tab.constraint_type = 'PRIMARY KEY'
-            and tab.table_schema <> 'pg_catalog'
-            and tco.ordinal_position is not null
-            order by
-            tab.table_schema,
-            tab.table_name,
-            tco.position_in_unique_constraint
-            
-        ) pks
-        group by
-        pks.schema_name,
-        pks.table_name) tabs
-        left join geometry_columns gc 
-        on
-        tabs.schema = gc.f_table_schema
-        and tabs.table = gc.f_table_name").fetch_all(p).await.context("Encountered error while querying database for schemata").unwrap().into_iter();
-
-    let mut registry = TableRegistry::new(db);
-
-    while let Some(row) = schema_and_table_info.next() {
-        let schema_name = &row.try_get::<String, &str>("schema");
-        let table_name = &row.try_get::<String, &str>("table");
-        let geo_column = &row.try_get::<String, &str>("geometry_column");
-
-        if let (Ok(schema), Ok(table)) = (schema_name, table_name) {
-            match registry.schemas.get_mut(schema) {
-                Some(schema) => {
-                    schema.tables.insert(
-                        table.to_string(),
-                        Table::from_row(&row)
-                            .context("Encountered error while converting row fields to Table")
-                            .unwrap(),
-                    );
-                }
-                None => {
-                    registry
-                        .schemas
-                        .insert(schema.to_string(), Schema::new(schema.to_string()));
-
-                    let local_schema = registry.schemas.get_mut(schema).unwrap();
-
-                    local_schema.tables.insert(
-                        table.to_string(),
-                        Table::from_row(&row)
-                            .context("Encoutered error while converting row fields to Table")
-                            .unwrap(),
-                    );
-                }
-            }
-        } else {
-            bail!("Schema name not found in row")
-        }
-    }
-
-    return Ok(registry);
+fn get_table(r: &TableRegistry, schema: String, table: String) -> Result<&Table> {
+    return r
+        .schemas
+        .get(&schema)
+        .and_then(|s: &Schema| s.tables.get(&table))
+        .ok_or(anyhow!("Specified table not found in schema"));
 }
 
-fn check_registry_for_table(r: TableRegistry, schema: String, table: String) -> Result<()> {
-    let res = match r.schemas.get(&schema) {
-        Some(s) => s.tables.contains_key(&table),
-        None => false,
+fn make_envelope_statement(t: &Tile, m: Option<f32>) -> String {
+    let mut margin_text: String = "".to_string();
+    if let Some(margin) = m {
+        margin_text = format!(", {}", margin);
     };
 
-    match res {
-        true => return Ok(()),
-        false => return Err(anyhow!("Table not found.")),
-    }
-}
-
-fn parse_coordinates_to_envelope_statement(t: Tile) -> Result<String> {
-    let tile_size = 2_u32.pow(t.z);
-    if (t.x >= tile_size) | (t.y >= tile_size) {
-        bail!("Invalid tile coordinates");
-    };
-
-    return Ok(format!(
-        "ST_TileEnvelope({}, {}, {}, ST_MakeEnvelope({}, {}, {}, {}, {}))",
+    return format!(
+        "ST_TileEnvelope({}, {}, {}, ST_MakeEnvelope({}, {}, {}, {}, {}{}))",
         t.z,
         t.x,
         t.y,
@@ -200,12 +41,64 @@ fn parse_coordinates_to_envelope_statement(t: Tile) -> Result<String> {
         WORLD_MERC_MIN,
         WORLD_MERC_MAX,
         WORLD_MERC_MAX,
-        INCOMING_SRID
-    ));
+        INCOMING_SRID,
+        margin_text
+    );
 }
 
-fn make_full_query(envelope: String) {
+fn make_tile_data_query(t: &Tile, tab: &Table) -> Result<String> {
     //It occurs to me that we need some way to select what attributes should be served up with the tile
+    let tile_size = 2_u32.pow(t.z);
+    if (t.x >= tile_size) | (t.y >= tile_size) {
+        bail!("Invalid tile coordinates");
+    };
+
+    if let Some(geom_col) = &tab.geom_column {
+        let envelope = make_envelope_statement(t, None);
+
+        let envelope_with_margin = make_envelope_statement(t, Some(BUFFER / EXTENT));
+
+        let mut id_columns = tab.primary_key_columns.clone();
+        let attr_columns = tab.attr_columns.clone().unwrap_or_default();
+        id_columns.extend(attr_columns.into_iter());
+
+        let mvt_query = format!(
+            "with mvtgeom as (
+                select
+                    ST_AsMVTGeom(
+                            ST_Transform(t.{},
+                    {}),
+                    {},
+                    {},
+                    {}
+                        ) as geom,
+                    {}
+                from
+                    {}.{} t
+                where
+                    ST_Transform(t.{},
+                    {}) && {})
+                    select
+                    ST_AsMVT(mvtgeom.*)
+                from
+                    mvtgeom
+                    );",
+            geom_col,
+            INCOMING_SRID,
+            envelope,
+            EXTENT,
+            BUFFER,
+            id_columns.join(", "),
+            tab.schema_name,
+            tab.name,
+            geom_col,
+            INCOMING_SRID,
+            envelope_with_margin
+        );
+    } else {
+        bail!("No geometry column found in table. Unable to retrieve data.")
+    }
+    return Ok("String".to_string());
 }
 
 pub async fn serve_tile(
@@ -213,12 +106,22 @@ pub async fn serve_tile(
     State(state): State<AppState>,
 ) -> String {
     let pool = state.db_pool;
-    let table_registry_placeholder = load_table_registry(&pool, "default".to_string())
-        .await
-        .context("Encountered error while loading table registry")
+
+    let table_registry = state.table_registry;
+
+    let mvt_query = get_table(&table_registry, schema, table)
+        .context("Unable to locate requested table")
+        .and_then(|tab| make_tile_data_query(&Tile { x, y, z }, tab))
+        .context("Encountered error while assembling query text")
         .unwrap();
 
-    println!("{:?}", table_registry_placeholder);
+    let query_results = query(&mvt_query)
+        .fetch_all(&pool)
+        .await
+        .context("Encountered error while processing MVT query")
+        .unwrap();
+
+    println!("{:?}", table_registry);
 
     fn execute_query() {
         todo!()

@@ -16,12 +16,13 @@ mod api;
 use api::serve_tile;
 
 mod db;
-use db::get_db_connector;
+use db::{get_db_connector, load_table_registry, structs::TableRegistry};
 use sqlx::{Pool, Postgres};
 
 #[derive(Clone)]
 pub struct AppState {
     db_pool: Pool<Postgres>,
+    table_registry: TableRegistry,
 }
 
 #[tokio::main]
@@ -33,7 +34,15 @@ async fn main() {
         .context("Failed to get database connector)")
         .unwrap();
 
-    let state = AppState { db_pool };
+    let table_registry = load_table_registry(&db_pool, "default".to_string())
+        .await
+        .context("Failed to load table registry")
+        .unwrap();
+
+    let state = AppState {
+        db_pool,
+        table_registry,
+    };
 
     let app = Router::new()
         .route("/geocode/:queryString", get(get_latlong))
