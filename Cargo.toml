@@ -15,5 +15,6 @@ tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"] }
 dotenv_codegen = "0.15.0"
 axum-macros = "0.3.8"
 anyhow = {version = "1.0.75", features = ["backtrace"]}
-postgres = {version = "0.19.6", features = ["array-impls", "with-geo-types-0_7", "with-serde_json-1"]}
+sqlx = { version = "0.7", features = [ "runtime-tokio", "postgres", "json" ] }
 lazy_static = "1.4.0"
+dotenv = "0.15.0"
