@@ -2,8 +2,9 @@
 extern crate dotenv_codegen;
 extern crate dotenv;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context, Error};
 use axum::{routing::get, Router};
+use axum_macros::FromRequestParts;
 use dotenv::dotenv;
 
 mod geocoding;
@@ -26,18 +27,22 @@ pub struct AppState {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Error> {
     dotenv().ok();
 
-    let db_pool = get_db_connector()
-        .await
-        .context("Failed to get database connector)")
-        .unwrap();
+    let table_registry: TableRegistry;
+    let db_pool: Pool<Postgres>;
 
-    let table_registry = load_table_registry(&db_pool, "default".to_string())
-        .await
-        .context("Failed to load table registry")
-        .unwrap();
+    if let Ok(pool) = get_db_connector().await {
+        db_pool = pool;
+        if let Ok(registry) = load_table_registry(&db_pool, "default".to_string()).await {
+            table_registry = registry;
+        } else {
+            return Err(anyhow!("Failed to load table registry"));
+        };
+    } else {
+        return Err(anyhow!("Failed to connect with provided database string"));
+    };
 
     let state = AppState {
         db_pool,
@@ -46,12 +51,15 @@ async fn main() {
 
     let app = Router::new()
         .route("/geocode/:queryString", get(get_latlong))
-        .route("/layers/:tableid/:x/:y/:z.mvt", get(get_layer))
-        .route("/api/:schema/:table/:x/:y/:z", get(serve_tile))
+        .route(
+            "/layers/:schemaid/:tableid/:z/:x/:y_ext.mvt",
+            get(get_layer),
+        )
+        .route("/api/:schema/:table/:z/:x/:y", get(serve_tile))
         .with_state(state);
 
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())
         .await
-        .unwrap();
+        .context("Error occurred while starting server")
 }
