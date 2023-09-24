@@ -3,8 +3,12 @@ extern crate dotenv_codegen;
 extern crate dotenv;
 
 use anyhow::{anyhow, Context, Error};
-use axum::{routing::get, Router};
-use axum_macros::FromRequestParts;
+use axum::{
+    response::{IntoResponse, Response},
+    routing::get,
+    Router,
+};
+
 use dotenv::dotenv;
 
 mod geocoding;
@@ -13,12 +17,35 @@ use geocoding::get_latlong;
 mod layers;
 use layers::get_layer;
 
-mod api;
-use api::serve_tile;
+mod structs;
+
+mod transformations;
+use reqwest::StatusCode;
 
 mod db;
 use db::{get_db_connector, load_table_registry, structs::TableRegistry};
 use sqlx::{Pool, Postgres};
+
+pub struct AppError(anyhow::Error);
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Something went wrong: {}", self.0),
+        )
+            .into_response()
+    }
+}
+
+impl<E> From<E> for AppError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(err: E) -> Self {
+        Self(err.into())
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -51,11 +78,8 @@ async fn main() -> Result<(), Error> {
 
     let app = Router::new()
         .route("/geocode/:queryString", get(get_latlong))
-        .route(
-            "/layers/:schemaid/:tableid/:z/:x/:y_ext.mvt",
-            get(get_layer),
-        )
-        .route("/api/:schema/:table/:z/:x/:y", get(serve_tile))
+        .route("/layers/:schemaid/:tableid/:z/:x/:y_ext", get(get_layer))
+        //.route("/api/:schema/:table/:z/:x/:y", get(serve_tile))
         .with_state(state);
 
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
