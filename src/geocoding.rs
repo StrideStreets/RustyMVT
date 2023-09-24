@@ -27,9 +27,9 @@ pub struct GeocoderResult {
 }
 
 
-async fn call_geocoder_api(queryString: String) -> GeocoderResult {
+async fn call_geocoder_api(query_string: String) -> GeocoderResult {
   let api_key: &'static str = dotenv!("GEOCODER_API_KEY");
-  let request_url = format!("https://forward-reverse-geocoding.p.rapidapi.com/v1/search?q={queryString}", queryString = &queryString);
+  let request_url = format!("https://forward-reverse-geocoding.p.rapidapi.com/v1/search?q={queryString}", queryString = &query_string);
 
   let mut headers = HeaderMap::new();
   headers.insert(HeaderName::from_static("x-rapidapi-key"), HeaderValue::from_static(api_key));
@@ -44,8 +44,8 @@ async fn call_geocoder_api(queryString: String) -> GeocoderResult {
 }
 
 #[debug_handler]
-pub async fn get_latlong(Path(queryString): Path<String>) -> Json<GeocoderResult> {
-  let response: GeocoderResult = call_geocoder_api(queryString).await;
+pub async fn get_latlong(Path(query_string): Path<String>) -> Json<GeocoderResult> {
+  let response: GeocoderResult = call_geocoder_api(query_string).await;
   println!("{:?}", response);
   Json(response)
 }
