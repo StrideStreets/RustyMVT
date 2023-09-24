@@ -1,9 +1,19 @@
-use crate::{db::structs::Table, structs::Tile};
-use anyhow::bail;
-use anyhow::Error;
-use axum::response::IntoResponse;
-use axum::response::Response;
-use reqwest::StatusCode;
+use crate::{db::Table, AppError};
+use anyhow::{anyhow, bail, Error};
+use sqlx::{query, Pool, Postgres, Row};
+
+#[derive(Debug)]
+pub struct Tile {
+    pub z: usize,
+    pub x: usize,
+    pub y: usize,
+}
+
+impl Tile {
+    pub fn new(x: usize, y: usize, z: usize) -> Self {
+        Tile { x, y, z }
+    }
+}
 
 const WORLD_MERC_MAX: f64 = 20037508.3427892;
 const WORLD_MERC_MIN: f64 = WORLD_MERC_MAX * -1_f64;
@@ -17,7 +27,7 @@ fn make_envelope_statement(t: &Tile, m: Option<f32>) -> String {
         margin_text = format!(", {}", margin);
     };
 
-    return format!(
+    format!(
         "ST_TileEnvelope({}, {}, {}, ST_MakeEnvelope({}, {}, {}, {}, {}){})",
         t.z,
         t.x,
@@ -28,7 +38,7 @@ fn make_envelope_statement(t: &Tile, m: Option<f32>) -> String {
         WORLD_MERC_MAX,
         INCOMING_SRID,
         margin_text
-    );
+    )
 }
 
 pub fn make_tile_data_query(t: &Tile, tab: &Table) -> Result<String, Error> {
@@ -45,7 +55,7 @@ pub fn make_tile_data_query(t: &Tile, tab: &Table) -> Result<String, Error> {
 
         let mut id_columns = tab.primary_key_columns.clone();
         let attr_columns = tab.attr_columns.clone().unwrap_or_default();
-        id_columns.extend(attr_columns.into_iter());
+        id_columns.extend(attr_columns);
 
         Ok(format!(
             "with mvtgeom as (
@@ -81,5 +91,32 @@ pub fn make_tile_data_query(t: &Tile, tab: &Table) -> Result<String, Error> {
         ))
     } else {
         bail!("No geometry column found in table. Unable to retrieve data.")
+    }
+}
+
+pub async fn get_mvt(
+    tile: &Tile,
+    table: &Table,
+    conn: Pool<Postgres>,
+) -> Result<Vec<u8>, AppError> {
+    if let Ok(mvt_query) = make_tile_data_query(tile, table) {
+        println!("{}", &mvt_query);
+        match query(&mvt_query).fetch_all(&conn).await {
+            Ok(mvt_result) => {
+                let mvt_bytes: Vec<u8> = mvt_result[0].get(0);
+                Ok(mvt_bytes)
+            }
+            Err(e) => {
+                println!("{:?}", e);
+                Err(AppError(anyhow!(format!(
+                    "Failed to locate specified table. Received error {}",
+                    e
+                ))))
+            }
+        }
+    } else {
+        Err(AppError(anyhow!(
+            "Failed to assemble MVT query from provided parameters"
+        )))
     }
 }

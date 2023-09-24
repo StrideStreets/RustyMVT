@@ -1,16 +1,16 @@
-pub mod structs;
+mod structs;
 use anyhow::{bail, Context, Result};
 use sqlx::{postgres::PgPoolOptions, query, FromRow, Pool, Postgres, Row};
 use std::env::var;
-use structs::{Schema, Table, TableRegistry};
+pub use structs::{Schema, Table, TableRegistry};
 
 pub async fn get_db_connector() -> Result<Pool<Postgres>> {
     let DB_URL =
         var("DB_CONNECTION_STRING").context("No connection string found in environment")?;
-    let USER = var("DB_USER")
+    let _USER = var("DB_USER")
         .context("No DB_USER var found in environment")
         .unwrap();
-    let PW = var("DB_PW")
+    let _PW = var("DB_PW")
         .context("No DB_PW var found in environment")
         .unwrap();
 
@@ -21,13 +21,13 @@ pub async fn get_db_connector() -> Result<Pool<Postgres>> {
         .context("Failed to connect using provided connection string.")
         .unwrap();
 
-    return Ok(pool);
+    Ok(pool)
 }
 
 pub async fn load_table_registry(p: &Pool<Postgres>, db: String) -> Result<TableRegistry> {
     //Will autopopulate a table registry for a given database, in the mold of the placeholder defined below
 
-    let mut schema_and_table_info = query("select
+    let schema_and_table_info = query("select
     tabs.*,
     gc.f_geometry_column as geom_column, gc.srid as srid, gc.type as geom_type, gc.coord_dimension as geom_coord_dimension
     from
@@ -68,10 +68,10 @@ pub async fn load_table_registry(p: &Pool<Postgres>, db: String) -> Result<Table
 
     let mut registry = TableRegistry::new(db);
 
-    while let Some(row) = schema_and_table_info.next() {
+    for row in schema_and_table_info {
         let schema_name = &row.try_get::<String, &str>("schema");
         let table_name = &row.try_get::<String, &str>("table");
-        let geo_column = &row.try_get::<String, &str>("geometry_column");
+        let _geo_column = &row.try_get::<String, &str>("geometry_column");
 
         if let (Ok(schema), Ok(table)) = (schema_name, table_name) {
             match registry.schemas.get_mut(schema) {
@@ -103,7 +103,7 @@ pub async fn load_table_registry(p: &Pool<Postgres>, db: String) -> Result<Table
         }
     }
 
-    return Ok(registry);
+    Ok(registry)
 }
 
 //Info on making queries here: https://github.com/launchbadge/sqlx#usage

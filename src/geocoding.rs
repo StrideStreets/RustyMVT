@@ -2,9 +2,9 @@
 
 use axum::{Json, extract::{Path}};
 use serde::{Serialize, Deserialize, Deserializer, de};
-use serde_json::{json, Value};
-use reqwest::{Error, Client, header::{HeaderMap, HeaderName, HeaderValue}};
-use std::{env, num::ParseFloatError};
+use serde_json::{Value};
+use reqwest::{Client, header::{HeaderMap, HeaderName, HeaderValue}};
+
 use axum_macros::debug_handler;
 
 
@@ -36,9 +36,9 @@ async fn call_geocoder_api(queryString: String) -> GeocoderResult {
   headers.insert(HeaderName::from_static("x-rapidapi-host"), HeaderValue::from_static("forward-reverse-geocoding.p.rapidapi.com"));
   
   let response = Client::new().get(request_url).headers(headers).send().await.unwrap();
-  let data = response.json::<Vec<GeocoderResult>>().await.unwrap().into_iter().next().unwrap();
+  
 
-  return data;
+  response.json::<Vec<GeocoderResult>>().await.unwrap().into_iter().next().unwrap()
 
 
 }
@@ -47,6 +47,6 @@ async fn call_geocoder_api(queryString: String) -> GeocoderResult {
 pub async fn get_latlong(Path(queryString): Path<String>) -> Json<GeocoderResult> {
   let response: GeocoderResult = call_geocoder_api(queryString).await;
   println!("{:?}", response);
-  return Json(response);
+  Json(response)
 }
 

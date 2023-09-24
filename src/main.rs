@@ -17,13 +17,10 @@ use geocoding::get_latlong;
 mod layers;
 use layers::get_layer;
 
-mod structs;
-
-mod transformations;
 use reqwest::StatusCode;
 
 mod db;
-use db::{get_db_connector, load_table_registry, structs::TableRegistry};
+use db::{get_db_connector, load_table_registry, TableRegistry};
 use sqlx::{Pool, Postgres};
 
 pub struct AppError(anyhow::Error);

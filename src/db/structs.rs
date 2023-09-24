@@ -7,10 +7,10 @@ pub struct TableRegistry {
 
 impl TableRegistry {
     pub fn new(n: String) -> TableRegistry {
-        return TableRegistry {
+        TableRegistry {
             name: n,
             schemas: HashMap::new(),
-        };
+        }
     }
 }
 
@@ -22,10 +22,10 @@ pub struct Schema {
 
 impl Schema {
     pub fn new(n: String) -> Schema {
-        return Schema {
+        Schema {
             name: n,
             tables: HashMap::new(),
-        };
+        }
     }
 }
 
@@ -58,7 +58,7 @@ impl Table {
         attrs: Option<Vec<String>>,
     ) -> Table {
         if let Some(attr_columns) = attrs {
-            return Table {
+            Table {
                 name,
                 schema_name,
                 primary_key_columns,
@@ -66,9 +66,9 @@ impl Table {
                 geom_type: Some(geom_type),
                 srid: Some(srid),
                 attr_columns: Some(attr_columns),
-            };
+            }
         } else {
-            return Table {
+            Table {
                 name,
                 schema_name,
                 primary_key_columns,
@@ -76,7 +76,7 @@ impl Table {
                 geom_type: Some(geom_type),
                 srid: Some(srid),
                 attr_columns: Some(Vec::new()),
-            };
+            }
         }
     }
 }
