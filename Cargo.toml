@@ -1,7 +1,9 @@
 [package]
-name = "rust-server"
+name = "rusty-mvt"
 version = "0.1.0"
 edition = "2021"
+description = "A lightweight server for Mapbox Vector Tiles, implemented in Rust."
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

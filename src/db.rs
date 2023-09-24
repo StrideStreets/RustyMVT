@@ -5,18 +5,18 @@ use std::env::var;
 pub use structs::{Schema, Table, TableRegistry};
 
 pub async fn get_db_connector() -> Result<Pool<Postgres>> {
-    let DB_URL =
+    let db_url =
         var("DB_CONNECTION_STRING").context("No connection string found in environment")?;
-    let _USER = var("DB_USER")
+    let _user = var("DB_USER")
         .context("No DB_USER var found in environment")
         .unwrap();
-    let _PW = var("DB_PW")
+    let _pw = var("DB_PW")
         .context("No DB_PW var found in environment")
         .unwrap();
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(&DB_URL)
+        .connect(&db_url)
         .await
         .context("Failed to connect using provided connection string.")
         .unwrap();
