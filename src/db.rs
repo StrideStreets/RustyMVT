@@ -1,4 +1,5 @@
 mod structs;
+use crate::get_srid_unit;
 use anyhow::{bail, Context, Result};
 use sqlx::{postgres::PgPoolOptions, query, FromRow, Pool, Postgres, Row};
 use std::env::var;
@@ -56,12 +57,12 @@ pub async fn load_table_registry(p: &Pool<Postgres>, db: String) -> Result<Table
             tab.table_schema,
             tab.table_name,
             tco.position_in_unique_constraint
-            
+
         ) pks
         group by
         pks.schema_name,
         pks.table_name) tabs
-        left join geometry_columns gc 
+        left join geometry_columns gc
         on
         tabs.schema = gc.f_table_schema
         and tabs.table = gc.f_table_name").fetch_all(p).await.context("Encountered error while querying database for schemata").unwrap().into_iter();
@@ -74,14 +75,17 @@ pub async fn load_table_registry(p: &Pool<Postgres>, db: String) -> Result<Table
         let _geo_column = &row.try_get::<String, &str>("geometry_column");
 
         if let (Ok(schema), Ok(table)) = (schema_name, table_name) {
+            let mut this_table = Table::from_row(&row)
+                .context("Encountered error while converting row fields to Table")
+                .unwrap();
+
+            if let Some(srid) = this_table.srid {
+                this_table.dist_unit = get_srid_unit(srid).and_then(|unit| Some(unit.to_owned()));
+            }
+
             match registry.schemas.get_mut(schema) {
                 Some(schema) => {
-                    schema.tables.insert(
-                        table.to_string(),
-                        Table::from_row(&row)
-                            .context("Encountered error while converting row fields to Table")
-                            .unwrap(),
-                    );
+                    schema.tables.insert(table.to_string(), this_table);
                 }
                 None => {
                     registry
@@ -90,12 +94,7 @@ pub async fn load_table_registry(p: &Pool<Postgres>, db: String) -> Result<Table
 
                     let local_schema = registry.schemas.get_mut(schema).unwrap();
 
-                    local_schema.tables.insert(
-                        table.to_string(),
-                        Table::from_row(&row)
-                            .context("Encoutered error while converting row fields to Table")
-                            .unwrap(),
-                    );
+                    local_schema.tables.insert(table.to_string(), this_table);
                 }
             }
         } else {

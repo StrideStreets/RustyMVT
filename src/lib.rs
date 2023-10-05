@@ -1,6 +1,8 @@
+include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
 pub mod db;
 pub mod geocoding;
 pub mod layers;
+pub mod routing;
 
 #[macro_use]
 extern crate dotenv_codegen;
@@ -37,3 +39,9 @@ pub struct AppState {
     pub db_pool: Pool<Postgres>,
     pub table_registry: TableRegistry,
 }
+
+pub fn get_srid_unit(srid: i32) -> Option<&'static str> {
+    UNIT_BY_SRID.get(&srid).copied()
+}
+
+pub static MILES_TO_MINUTES_FACTOR: f64 = 0.05;

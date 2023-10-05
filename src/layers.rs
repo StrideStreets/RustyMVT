@@ -1,11 +1,7 @@
 mod vector_tile;
 use anyhow::anyhow;
-use axum::{
-    extract::{Path, State},
-    http::HeaderMap,
-    response::IntoResponse,
-};
-use vector_tile::{get_mvt, Tile};
+use axum::extract::{Path, State};
+use vector_tile::{get_mvt, MVTBuffer, Tile};
 
 use axum_macros::debug_handler;
 
@@ -15,7 +11,7 @@ use crate::{AppError, AppState};
 pub async fn get_layer(
     State(state): State<AppState>,
     Path((schemaid, tableid, z, x, y_ext)): Path<(String, String, usize, usize, String)>,
-) -> Result<(HeaderMap, impl IntoResponse), AppError> {
+) -> Result<MVTBuffer, AppError> {
     let table_spec;
     if let Some(schema) = state.table_registry.schemas.get(&schemaid) {
         if let Some(table) = schema.tables.get(&tableid) {
@@ -36,16 +32,7 @@ pub async fn get_layer(
     let this_tile = Tile::new(x, y, z);
 
     match ext {
-        "mvt" => get_mvt(&this_tile, table_spec, state.db_pool)
-            .await
-            .map(|mvt_body| {
-                let mut headers = HeaderMap::new();
-                headers.insert(
-                    "Content-Type",
-                    "application/vnd.mapbox-vector-tile".parse().unwrap(),
-                );
-                (headers, mvt_body)
-            }),
+        "mvt" => get_mvt(&this_tile, table_spec, state.db_pool).await,
         _ => Err(AppError(anyhow!("Specified file extension not supported"))), //Or something -- this is meant to indicate that the format is not currently supported,
     }
 }

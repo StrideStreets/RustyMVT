@@ -1,5 +1,7 @@
 use crate::{db::Table, AppError};
 use anyhow::{anyhow, bail, Error};
+use axum::{http::HeaderMap, response::IntoResponse};
+use reqwest::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 use sqlx::{query, Pool, Postgres, Row};
 
 #[derive(Debug)]
@@ -12,6 +14,20 @@ pub struct Tile {
 impl Tile {
     pub fn new(x: usize, y: usize, z: usize) -> Self {
         Tile { x, y, z }
+    }
+}
+
+pub struct MVTBuffer(Vec<u8>);
+
+impl IntoResponse for MVTBuffer {
+    fn into_response(self) -> axum::response::Response {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_TYPE,
+            "application/vnd.mapbox-vector-tile".parse().unwrap(),
+        );
+        headers.insert(ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().unwrap());
+        (headers, self.0).into_response()
     }
 }
 
@@ -98,13 +114,12 @@ pub async fn get_mvt(
     tile: &Tile,
     table: &Table,
     conn: Pool<Postgres>,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<MVTBuffer, AppError> {
     if let Ok(mvt_query) = make_tile_data_query(tile, table) {
-        println!("{}", &mvt_query);
         match query(&mvt_query).fetch_all(&conn).await {
             Ok(mvt_result) => {
                 let mvt_bytes: Vec<u8> = mvt_result[0].get(0);
-                Ok(mvt_bytes)
+                Ok(MVTBuffer(mvt_bytes))
             }
             Err(e) => {
                 println!("{:?}", e);

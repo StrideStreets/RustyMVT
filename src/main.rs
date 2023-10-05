@@ -1,22 +1,23 @@
-
-extern crate dotenv_codegen;
 extern crate dotenv;
+extern crate dotenv_codegen;
 extern crate rusty_mvt;
 
 use anyhow::{anyhow, Context, Error};
 use axum::{
-    routing::get,
+    routing::{get, post},
     Router,
 };
 
-use rusty_mvt::{geocoding::get_latlong, layers::get_layer, db::{get_db_connector, load_table_registry, TableRegistry}, AppState};
 use dotenv::dotenv;
-
-
-
+use rusty_mvt::{
+    db::{get_db_connector, load_table_registry, TableRegistry},
+    geocoding::get_latlong,
+    layers::get_layer,
+    routing::get_circuit,
+    AppState,
+};
 
 use sqlx::{Pool, Postgres};
-
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -44,7 +45,7 @@ async fn main() -> Result<(), Error> {
     let app = Router::new()
         .route("/geocode/:queryString", get(get_latlong))
         .route("/layers/:schemaid/:tableid/:z/:x/:y_ext", get(get_layer))
-        //.route("/api/:schema/:table/:z/:x/:y", get(serve_tile))
+        .route("/circuit/:schemaid/:tableid/:featureid", post(get_circuit))
         .with_state(state);
 
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())

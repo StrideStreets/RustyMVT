@@ -45,6 +45,7 @@ pub struct Table {
     pub srid: Option<i32>,
     #[sqlx(default)]
     pub attr_columns: Option<Vec<String>>,
+    pub dist_unit: Option<String>,
 }
 
 impl Table {
@@ -56,6 +57,7 @@ impl Table {
         geom_type: String,
         srid: i32,
         attrs: Option<Vec<String>>,
+        dist_unit: String,
     ) -> Table {
         if let Some(attr_columns) = attrs {
             Table {
@@ -66,6 +68,7 @@ impl Table {
                 geom_type: Some(geom_type),
                 srid: Some(srid),
                 attr_columns: Some(attr_columns),
+                dist_unit: Some(dist_unit),
             }
         } else {
             Table {
@@ -76,6 +79,7 @@ impl Table {
                 geom_type: Some(geom_type),
                 srid: Some(srid),
                 attr_columns: Some(Vec::new()),
+                dist_unit: Some(dist_unit),
             }
         }
     }
