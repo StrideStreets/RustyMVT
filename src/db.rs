@@ -81,6 +81,16 @@ pub async fn load_table_registry(p: &Pool<Postgres>, db: String) -> Result<Table
 
             if let Some(srid) = this_table.srid {
                 this_table.dist_unit = get_srid_unit(srid).and_then(|unit| Some(unit.to_owned()));
+                match &this_table.dist_unit {
+                    None => this_table.use_geog = false,
+                    Some(unit) => {
+                        if *unit == "deg".to_string() {
+                            this_table.use_geog = true;
+                        } else {
+                            this_table.use_geog = false;
+                        }
+                    }
+                }
             }
 
             match registry.schemas.get_mut(schema) {

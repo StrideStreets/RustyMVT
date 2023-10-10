@@ -25,6 +25,7 @@ geojson = "0.24.1"
 geo-types = "0.7.11"
 unit-conversions = "0.1.13"
 phf = "0.11.2"
+speedicycle = {path = "../speedicycle"}
 
 [build-dependencies]
 phf = "0.11.2"

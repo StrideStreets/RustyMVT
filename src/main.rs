@@ -45,7 +45,7 @@ async fn main() -> Result<(), Error> {
     let app = Router::new()
         .route("/geocode/:queryString", get(get_latlong))
         .route("/layers/:schemaid/:tableid/:z/:x/:y_ext", get(get_layer))
-        .route("/circuit/:schemaid/:tableid/:featureid", post(get_circuit))
+        .route("/circuit/:schemaid/:tableid/", post(get_circuit))
         .with_state(state);
 
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
