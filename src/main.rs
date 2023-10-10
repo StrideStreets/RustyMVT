@@ -9,6 +9,7 @@ use axum::{
 };
 
 use dotenv::dotenv;
+use reqwest::{header::CONTENT_TYPE, Method};
 use rusty_mvt::{
     db::{get_db_connector, load_table_registry, TableRegistry},
     geocoding::get_latlong,
@@ -18,6 +19,8 @@ use rusty_mvt::{
 };
 
 use sqlx::{Pool, Postgres};
+
+use tower_http::cors::{Any, CorsLayer};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -42,11 +45,17 @@ async fn main() -> Result<(), Error> {
         table_registry,
     };
 
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST])
+        .allow_origin(Any)
+        .allow_headers([CONTENT_TYPE]);
+
     let app = Router::new()
         .route("/geocode/:queryString", get(get_latlong))
         .route("/layers/:schemaid/:tableid/:z/:x/:y_ext", get(get_layer))
         .route("/circuit/:schemaid/:tableid/", post(get_circuit))
-        .with_state(state);
+        .with_state(state)
+        .layer(cors);
 
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())

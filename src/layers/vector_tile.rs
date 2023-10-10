@@ -1,7 +1,7 @@
 use crate::{db::Table, AppError};
 use anyhow::{anyhow, bail, Error};
 use axum::{http::HeaderMap, response::IntoResponse};
-use reqwest::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
+use reqwest::header::CONTENT_TYPE;
 use sqlx::{query, Pool, Postgres, Row};
 
 #[derive(Debug)]
@@ -26,7 +26,6 @@ impl IntoResponse for MVTBuffer {
             CONTENT_TYPE,
             "application/vnd.mapbox-vector-tile".parse().unwrap(),
         );
-        headers.insert(ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().unwrap());
         (headers, self.0).into_response()
     }
 }
