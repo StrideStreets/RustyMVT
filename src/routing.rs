@@ -19,6 +19,7 @@ use utils::{
 };
 
 use self::utils::try_convert_to_edge_json;
+use tokio::task::spawn;
 
 #[derive(Deserialize)]
 pub struct RoutingOptions {
@@ -106,31 +107,43 @@ pub async fn get_circuit(
         Ok(rows) => {
             let edge_to_vertex_mapper = get_edge_to_vertex_pair_mapper(&rows);
 
-            match try_convert_to_edge_json(&rows).and_then(|json_str| {
-                make_route_from_edges_json::<u32, f64, u32>(
-                    json_str,
-                    starting_geom.node_id,
-                    desired_distance,
-                )
-                .map_err(|e| AppError(anyhow!(e)))
-            }) {
-                Ok(results) => {
-                    let mut valid_paths = VecDeque::new();
-                    let upper_edges =
-                        process_routing_result_as_edge_list(results.upper, &edge_to_vertex_mapper);
-                    let lower_edges =
-                        process_routing_result_as_edge_list(results.lower, &edge_to_vertex_mapper);
-                    if let Ok(path) =
-                        get_path_geometries(upper_edges, table_spec, &state.db_pool).await
-                    {
-                        valid_paths.push_back(path);
+            match try_convert_to_edge_json(&rows) {
+                Ok(json_str) => {
+                    let routing_task = spawn(async move {
+                        make_route_from_edges_json::<u32, f64, u32>(
+                            json_str,
+                            starting_geom.node_id,
+                            desired_distance,
+                        )
+                    })
+                    .await?;
+                    match routing_task.map_err(|e| AppError(anyhow!(e))) {
+                        Ok(results) => {
+                            let mut valid_paths = VecDeque::new();
+                            let upper_edges = process_routing_result_as_edge_list(
+                                results.upper,
+                                &edge_to_vertex_mapper,
+                            );
+                            let lower_edges = process_routing_result_as_edge_list(
+                                results.lower,
+                                &edge_to_vertex_mapper,
+                            );
+                            if let Ok(path) =
+                                get_path_geometries(upper_edges, table_spec, &state.db_pool).await
+                            {
+                                valid_paths.push_back(path);
+                            }
+                            if let Ok(path) =
+                                get_path_geometries(lower_edges, table_spec, &state.db_pool).await
+                            {
+                                valid_paths.push_back(path);
+                            }
+                            return Ok(Json(valid_paths));
+                        }
+                        Err(e) => {
+                            return Err(e);
+                        }
                     }
-                    if let Ok(path) =
-                        get_path_geometries(lower_edges, table_spec, &state.db_pool).await
-                    {
-                        valid_paths.push_back(path);
-                    }
-                    return Ok(Json(valid_paths));
                 }
                 Err(e) => {
                     return Err(e);

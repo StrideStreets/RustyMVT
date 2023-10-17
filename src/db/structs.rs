@@ -1,5 +1,9 @@
+use axum::response::IntoResponse;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
-#[derive(Debug, Clone)]
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableRegistry {
     pub name: String,
     pub schemas: HashMap<String, Schema>,
@@ -14,7 +18,13 @@ impl TableRegistry {
     }
 }
 
-#[derive(Debug, Clone)]
+impl IntoResponse for TableRegistry {
+    fn into_response(self) -> axum::response::Response {
+        json!(self).to_string().into_response()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Schema {
     pub name: String,
     pub tables: HashMap<String, Table>,
@@ -30,7 +40,7 @@ impl Schema {
 }
 
 //"Once DB is connected, work on loading tables in this format, and rewrite Schema"
-#[derive(sqlx::FromRow, Debug, Clone)]
+#[derive(sqlx::FromRow, Debug, Clone, Serialize, Deserialize)]
 pub struct Table {
     #[sqlx(rename = "table")]
     pub name: String,

@@ -25,8 +25,9 @@ geojson = "0.24.1"
 geo-types = "0.7.11"
 unit-conversions = "0.1.13"
 phf = "0.11.2"
-speedicycle = "0.1.4"
-tower-http = { version = "0.4.4", features = ["cors"] }
+speedicycle = {path = "../speedicycle/"}
+tower-http = { version = "0.4.4", features = ["cors", "timeout"] }
+tower = { version = "0.4.13", features = ["timeout"] }
 
 [build-dependencies]
 phf = "0.11.2"
