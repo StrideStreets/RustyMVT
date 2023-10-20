@@ -1,5 +1,5 @@
 use crate::{db::Table, AppError};
-use anyhow::{anyhow, bail, Error};
+use anyhow::{anyhow};
 use axum::{http::HeaderMap, response::IntoResponse};
 use reqwest::header::CONTENT_TYPE;
 use sqlx::{query, Pool, Postgres, Row};
