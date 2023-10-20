@@ -1,33 +1,118 @@
 mod structs;
 use crate::get_srid_unit;
-use anyhow::{bail, Context, Result};
-use sqlx::{postgres::PgPoolOptions, query, FromRow, Pool, Postgres, Row};
+use anyhow::{Context, Result};
+use sqlx::{
+    postgres::{PgPool, PgPoolOptions},
+    query, FromRow, Pool, Postgres, Row,
+};
 use std::env::var;
 pub use structs::{Schema, Table, TableRegistry};
 
+/**
+Retrieves a database connection pool for a PostgreSQL database.
+
+# Example
+
+```rust
+# use anyhow::Result;
+# use sqlx::{Pool, Postgres};
+#
+# pub async fn var(_: &str) -> Result<String> { Ok("".to_string()) }
+#
+# pub async fn get_db_connector() -> Result<Pool<Postgres>> {
+let pool = get_db_connector().await?;
+#     Ok(pool)
+# }
+```
+
+# Errors
+
+- If the environment variable `DB_CONNECTION_STRING` is not found or empty, returns an `anyhow::Error`.
+- If the environment variable `DB_MAX_CONNECTIONS` is not found or cannot be parsed as a `u32`, returns an `anyhow::Error`.
+- If connecting to the database using the provided connection string fails, returns an `anyhow::Error`.
+
+# Returns
+
+A `Result` containing the PostgreSQL connection pool. If successful, the connection pool is returned. If an error occurs, an `anyhow::Error` is returned.
+*/
 pub async fn get_db_connector() -> Result<Pool<Postgres>> {
     let db_url =
         var("DB_CONNECTION_STRING").context("No connection string found in environment")?;
-    let _user = var("DB_USER")
-        .context("No DB_USER var found in environment")
-        .unwrap();
-    let _pw = var("DB_PW")
-        .context("No DB_PW var found in environment")
-        .unwrap();
+
+    let max_connections = var("DB_MAX_CONNECTIONS")
+        .context("No DB_MAX_CONNECTIONS var found in environment")
+        .unwrap_or_else(|_| "5".to_string())
+        .parse::<u32>()
+        .context("Failed to parse DB_MAX_CONNECTIONS as u32")?;
 
     let pool = PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(max_connections)
         .connect(&db_url)
         .await
-        .context("Failed to connect using provided connection string.")
-        .unwrap();
+        .context("Failed to connect using provided connection string.")?;
 
     Ok(pool)
 }
 
-pub async fn load_table_registry(p: &Pool<Postgres>, db: String) -> Result<TableRegistry> {
-    //Will autopopulate a table registry for a given database, in the mold of the placeholder defined below
+/**
+Retrieves information about tables and schemas from a PostgreSQL database.
 
+# Arguments
+
+* `p` - A reference to a `PgPool` object representing the connection pool to the PostgreSQL database.
+* `db` - A `String` containing the name of the database.
+
+# Returns
+
+A `Result` containing the populated `TableRegistry` object. If the function is successful, the `TableRegistry` object is returned. If an error occurs, an `anyhow::Error` is returned.
+
+# Example
+
+```rust
+# use anyhow::Result;
+# use sqlx::{Pool, Postgres};
+#
+# pub async fn var(_: &str) -> Result<String> { Ok("".to_string()) }
+#
+# pub async fn get_db_connector() -> Result<Pool<Postgres>> {
+#     let pool = get_db_connector().await?;
+#     Ok(pool)
+# }
+#
+# pub async fn get_srid_unit(_: i32) -> Option<String> { Some("".to_string()) }
+#
+# mod structs {
+#     pub struct Schema {
+#         pub tables: std::collections::HashMap<String, Table>,
+#     }
+#
+#     pub struct Table {
+#         pub srid: Option<i32>,
+#         pub dist_unit: Option<String>,
+#         pub use_geog: bool,
+#     }
+#
+#     pub struct TableRegistry {
+#         pub schemas: std::collections::HashMap<String, Schema>,
+#     }
+# }
+#
+# async fn query(_: &str) -> Result<Vec<sqlx::postgres::PgRow>> { Ok(Vec::new()) }
+#
+# async fn fetch_all(_: &sqlx::postgres::PgPool) -> Result<Vec<sqlx::postgres::PgRow>> { Ok(Vec::new()) }
+#
+# async fn get_srid_unit(_: i32) -> Option<String> { Some("".to_string()) }
+#
+# async fn get_db_connector() -> Result<sqlx::postgres::PgPool> { Ok(sqlx::postgres::PgPool::new("")) }
+#
+# async fn load_table_registry(p: &sqlx::postgres::PgPool, db: String) -> Result<structs::TableRegistry> {
+let pool = get_db_connector().await?;
+let registry = load_table_registry(&pool, "my_database".to_string()).await?;
+#     Ok(registry)
+# }
+```
+*/
+pub async fn load_table_registry(p: &PgPool, db: String) -> Result<TableRegistry> {
     let schema_and_table_info = query("select
     tabs.*,
     gc.f_geometry_column as geom_column, gc.srid as srid, gc.type as geom_type, gc.coord_dimension as geom_coord_dimension
@@ -65,51 +150,45 @@ pub async fn load_table_registry(p: &Pool<Postgres>, db: String) -> Result<Table
         left join geometry_columns gc
         on
         tabs.schema = gc.f_table_schema
-        and tabs.table = gc.f_table_name").fetch_all(p).await.context("Encountered error while querying database for schemata").unwrap().into_iter();
+        and tabs.table = gc.f_table_name")
+        .fetch_all(p)
+        .await
+        .context("Encountered error while querying database for schemata")?
+        .into_iter();
 
     let mut registry = TableRegistry::new(db);
 
     for row in schema_and_table_info {
-        let schema_name = &row.try_get::<String, &str>("schema");
-        let table_name = &row.try_get::<String, &str>("table");
-        let _geo_column = &row.try_get::<String, &str>("geometry_column");
+        let schema_name = row
+            .try_get::<String, &str>("schema")
+            .context("Schema name not found in row")?;
+        let table_name = row
+            .try_get::<String, &str>("table")
+            .context("Table name not found in row")?;
 
-        if let (Ok(schema), Ok(table)) = (schema_name, table_name) {
-            let mut this_table = Table::from_row(&row)
-                .context("Encountered error while converting row fields to Table")
-                .unwrap();
+        let _geo_column = row.try_get::<String, &str>("geom_column").ok();
 
-            if let Some(srid) = this_table.srid {
-                this_table.dist_unit = get_srid_unit(srid).and_then(|unit| Some(unit.to_owned()));
-                match &this_table.dist_unit {
-                    None => this_table.use_geog = false,
-                    Some(unit) => {
-                        if *unit == "deg".to_string() {
-                            this_table.use_geog = true;
-                        } else {
-                            this_table.use_geog = false;
-                        }
-                    }
-                }
+        let schema_name = schema_name.to_owned();
+        let table_name = table_name.to_owned();
+
+        let mut this_table = Table::from_row(&row)
+            .context("Encountered error while converting row fields to Table")?;
+
+        if let Some(srid) = this_table.srid {
+            this_table.dist_unit = get_srid_unit(srid).map(|unit| unit.to_owned());
+            if let Some(unit) = &this_table.dist_unit {
+                this_table.use_geog = *unit == "deg".to_string();
+            } else {
+                this_table.use_geog = false;
             }
-
-            match registry.schemas.get_mut(schema) {
-                Some(schema) => {
-                    schema.tables.insert(table.to_string(), this_table);
-                }
-                None => {
-                    registry
-                        .schemas
-                        .insert(schema.to_string(), Schema::new(schema.to_string()));
-
-                    let local_schema = registry.schemas.get_mut(schema).unwrap();
-
-                    local_schema.tables.insert(table.to_string(), this_table);
-                }
-            }
-        } else {
-            bail!("Schema name not found in row")
         }
+
+        registry
+            .schemas
+            .entry(schema_name)
+            .or_insert_with_key(|key| Schema::new(key.to_string()))
+            .tables
+            .insert(table_name, this_table);
     }
 
     Ok(registry)

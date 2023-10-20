@@ -50,11 +50,14 @@ async fn main() -> Result<(), Error> {
 
     if let Ok(pool) = get_db_connector().await {
         db_pool = pool;
-        if let Ok(registry) = load_table_registry(&db_pool, "default".to_string()).await {
-            table_registry = registry;
-        } else {
-            return Err(anyhow!("Failed to load table registry"));
-        };
+        match load_table_registry(&db_pool, "default".to_string()).await {
+            Ok(registry) => {
+                table_registry = registry;
+            }
+            Err(e) => {
+                return Err(anyhow!("Failed to load table registry: {}", e));
+            }
+        }
     } else {
         return Err(anyhow!("Failed to connect with provided database string"));
     };

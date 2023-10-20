@@ -121,11 +121,11 @@ pub async fn get_circuit(
                         Ok(results) => {
                             let mut valid_paths = VecDeque::new();
                             let upper_edges = process_routing_result_as_edge_list(
-                                results.upper,
+                                &results.upper,
                                 &edge_to_vertex_mapper,
                             );
                             let lower_edges = process_routing_result_as_edge_list(
-                                results.lower,
+                                &results.lower,
                                 &edge_to_vertex_mapper,
                             );
                             if let Ok(path) =

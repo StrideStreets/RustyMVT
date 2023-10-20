@@ -4,10 +4,6 @@ pub mod geocoding;
 pub mod layers;
 pub mod routing;
 
-#[macro_use]
-extern crate dotenv_codegen;
-extern crate dotenv;
-
 use crate::db::TableRegistry;
 use axum::response::{IntoResponse, Response};
 use reqwest::StatusCode;
