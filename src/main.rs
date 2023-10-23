@@ -13,6 +13,7 @@ use axum::{
 };
 
 use dotenv::dotenv;
+use hyper::{http::Request, Body};
 use reqwest::{header::CONTENT_TYPE, Method};
 use rusty_mvt::{
     db::{get_db_connector, load_table_registry, TableRegistry},
@@ -24,7 +25,10 @@ use rusty_mvt::{
 
 use sqlx::{Pool, Postgres};
 
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::{
+    cors::{Any, CorsLayer},
+    trace::TraceLayer,
+};
 
 use tower::ServiceBuilder;
 
@@ -44,6 +48,18 @@ async fn handle_timeout_error(err: BoxError) -> (StatusCode, String) {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     dotenv().ok();
+
+    tracing_subscriber::fmt()
+        .with_ansi(false)
+        .without_time()
+        .with_max_level(tracing::Level::INFO)
+        .json()
+        .init();
+
+    let trace_layer =
+        TraceLayer::new_for_http().on_request(|_: &Request<Body>, _: &tracing::Span| {
+            tracing::info!(message = "begin request!")
+        });
 
     let table_registry: TableRegistry;
     let db_pool: Pool<Postgres>;
@@ -82,12 +98,31 @@ async fn main() -> Result<(), Error> {
         .route("/geocode/:queryString", get(get_latlong))
         .route("/layers/:schemaid/:tableid/:z/:x/:y_ext", get(get_layer))
         .route("/circuit/:schemaid/:tableid/", post(get_circuit))
-        .with_state(state)
         .layer(timeout)
-        .layer(cors);
+        .layer(trace_layer)
+        .layer(cors)
+        .with_state(state);
 
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(app.into_make_service())
-        .await
-        .context("Error occurred while starting server")
+    #[cfg(not(feature = "lambda"))]
+    {
+        axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+            .serve(app.into_make_service())
+            .await
+            .map_err(|e| anyhow!("Encountered error while starting server: {}", e))
+    }
+
+    // If we compile in release mode, use the Lambda Runtime
+    #[cfg(feature = "lambda")]
+    {
+        use axum_aws_lambda;
+        use lambda_http;
+        // To run with AWS Lambda runtime, wrap in our `LambdaLayer`
+        let app = tower::ServiceBuilder::new()
+            .layer(axum_aws_lambda::LambdaLayer::default())
+            .service(app);
+
+        lambda_http::run(app)
+            .await
+            .map_err(|e| anyhow!("Encountered error while starting server: {}", e))
+    }
 }
