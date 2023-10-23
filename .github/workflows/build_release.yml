@@ -47,7 +47,7 @@ jobs:
       - name: Release lambda
         run: |
           pip install cargo-lambda
-          cargo lambda build --release
+          cargo lambda build --release -F lambda
           cargo lambda deploy RustyMVT
         env:
           AWS_DEFAULT_REGION: us-east-1
