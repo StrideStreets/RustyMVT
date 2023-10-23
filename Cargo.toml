@@ -29,7 +29,7 @@ geojson = "0.24.1"
 geo-types = "0.7.11"
 unit-conversions = "0.1.13"
 phf = "0.11.2"
-speedicycle = {path = "../speedicycle/"}
+speedicycle = "0.1.5"
 tower-http = { version = "0.4.4", features = ["cors", "timeout", "tracing", "trace"] }
 tower = { version = "0.4.13", features = ["timeout"] }
 urlencoding = "2.1.3"

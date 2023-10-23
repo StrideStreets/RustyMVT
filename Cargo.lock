@@ -1953,7 +1953,9 @@ dependencies = [
 
 [[package]]
 name = "speedicycle"
-version = "0.1.4"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51a8754c42e1a8947643c3d5e1a47ff893e3b02b6bae69e55e77dacdb2a77dc9"
 dependencies = [
  "anyhow",
  "clap",
