@@ -4,7 +4,7 @@ extern crate rusty_mvt;
 
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Error};
+use anyhow::{anyhow, Error};
 use axum::{
     error_handling::HandleErrorLayer,
     http::StatusCode,
