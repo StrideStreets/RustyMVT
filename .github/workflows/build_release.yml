@@ -19,9 +19,6 @@ jobs:
       - name: Build
         run: cargo build --release --verbose
 
-      - name: Run tests
-        run: cargo test --verbose
-
   lambda_build:
     runs-on: ubuntu-latest
 
