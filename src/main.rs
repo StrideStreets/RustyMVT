@@ -64,19 +64,25 @@ async fn main() -> Result<(), Error> {
     let table_registry: TableRegistry;
     let db_pool: Pool<Postgres>;
 
-    if let Ok(pool) = get_db_connector().await {
-        db_pool = pool;
-        match load_table_registry(&db_pool, "default".to_string()).await {
-            Ok(registry) => {
-                table_registry = registry;
-            }
-            Err(e) => {
-                return Err(anyhow!("Failed to load table registry: {}", e));
+    match get_db_connector().await {
+        Ok(pool) => {
+            db_pool = pool;
+            match load_table_registry(&db_pool, "default".to_string()).await {
+                Ok(registry) => {
+                    table_registry = registry;
+                }
+                Err(e) => {
+                    return Err(anyhow!("Failed to load table registry: {}", e));
+                }
             }
         }
-    } else {
-        return Err(anyhow!("Failed to connect with provided database string"));
-    };
+        Err(e) => {
+            return Err(anyhow!(
+                "Failed to connect with provided database string: {}",
+                e
+            ));
+        }
+    }
 
     let state = AppState {
         db_pool,

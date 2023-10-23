@@ -1,6 +1,6 @@
 mod structs;
 use crate::get_srid_unit;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use sqlx::{
     postgres::{PgPool, PgPoolOptions},
     query, FromRow, Pool, Postgres, Row,
@@ -45,13 +45,16 @@ pub async fn get_db_connector() -> Result<Pool<Postgres>> {
         .parse::<u32>()
         .context("Failed to parse DB_MAX_CONNECTIONS as u32")?;
 
-    let pool = PgPoolOptions::new()
+    match PgPoolOptions::new()
         .max_connections(max_connections)
+        .min_connections(1)
         .connect(&db_url)
         .await
-        .context("Failed to connect using provided connection string.")?;
+    {
+        Ok(pool) => return Ok(pool),
 
-    Ok(pool)
+        Err(e) => return Err(anyhow!("Failed to connect using provided string: {}", e)),
+    }
 }
 
 /**
